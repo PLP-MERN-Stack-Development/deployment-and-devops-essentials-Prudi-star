@@ -1,0 +1,208 @@
+# This document contains all CI/CD and deployment files for MERN monorepo.
+# Each file is separated by clear headers.
+
+#####################################################################
+# 1. .github/workflows/frontend-ci.yml
+#####################################################################
+
+---
+name: Frontend CI
+
+on:
+  push:
+    paths:
+      - 'client/**'
+      - '.github/workflows/frontend-ci.yml'
+  pull_request:
+    paths:
+      - 'client/**'
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Run Lint
+        run: npm run lint --if-present
+
+      - name: Run Tests
+        run: npm test --if-present -- --watchAll=false
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: client/build
+
+#####################################################################
+# 2. .github/workflows/frontend-cd.yml (Deploy to GitHub Pages)
+#####################################################################
+
+---
+name: Frontend Deploy (GitHub Pages)
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'client/**'
+      - '.github/workflows/frontend-cd.yml'
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v2
+        with:
+          path: client/build
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
+
+#####################################################################
+# 3. .github/workflows/backend-ci.yml
+#####################################################################
+
+---
+name: Backend CI
+
+on:
+  push:
+    paths:
+      - 'server/**'
+      - '.github/workflows/backend-ci.yml'
+  pull_request:
+    paths:
+      - 'server/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint --if-present
+
+      - name: Run Tests
+        run: npm test --if-present
+
+#####################################################################
+# 4. .github/workflows/backend-cd.yml (Render Deploy Hook)
+#####################################################################
+
+---
+name: Backend Deploy (Render)
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'server/**'
+      - '.github/workflows/backend-cd.yml'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trigger Render Deploy Hook
+        run: |
+          curl "$RENDER_DEPLOY_HOOK"
+        env:
+          RENDER_DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+
+#####################################################################
+# 5. render.yaml (Optional auto-deploy setup)
+#####################################################################
+
+# Place this file at repo root ONLY if using Render's repo settings.
+# If using a deploy hook only, this file is optional.
+
+services:
+  - type: web
+    name: my-mern-backend
+    env: node
+    rootDir: server
+    buildCommand: "npm install"
+    startCommand: "npm start"
+    autoDeploy: false
+    envVars:
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+
+#####################################################################
+# 6. .env.example (for monorepo)
+#####################################################################
+
+# Backend
+PORT=5000
+NODE_ENV=development
+MONGO_URI=your_mongodb_atlas_uri_here
+JWT_SECRET=your_jwt_secret_here
+
+# Frontend
+REACT_APP_API_URL=https://your-render-backend-url.onrender.com
+
+# Optional
+SENTRY_DSN=
+CLOUDINARY_URL=
